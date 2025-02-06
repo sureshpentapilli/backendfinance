@@ -29,15 +29,21 @@ const getAllUsers = async (req, res) => {
     const updatedUsers = users.map(user => ({
       ...user._doc,
       tradeLicense: user.tradeLicense
-        ? `${req.protocol}://${req.get('host')}${user.tradeLicense}`
+      ? `${req.protocol}://${req.get('host')}${user.tradeLicense}`
+      : null,
+    
+      auditedFinancials: user.auditedFinancials
+       ? `${req.protocol}://${req.get('host')}${user.auditedFinancials}`
         : null,
     }));
+
     res.status(200).json(updatedUsers);
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ message: 'An error occurred while fetching users.' });
   }
 };
+
 
 // Manage User Registration Status
 const manageUser = async (req, res) => {
@@ -190,20 +196,60 @@ const getVendors = async (req, res) => {
 };
 
 const addVendor = async (req, res) => {
-  const { name, details, products } = req.body;
-
-  if (!Array.isArray(products)) {
-    return res.status(400).json({ message: "'products' must be an array" });
-  }
-
   try {
-    const vendor = new Vendor({ name, details, products });
+    const { name, details, website, questions } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Vendor logo upload is required" });
+    }
+
+    // Ensure the path is stored correctly (relative path)
+    const vendorlogo = `/uploads/${req.file.filename}`;
+
+    let parsedQuestions = [];
+    if (questions) {
+      try {
+        if (typeof questions === 'string') {
+          parsedQuestions = JSON.parse(questions);
+        } else {
+          parsedQuestions = questions;
+        }
+
+        if (!Array.isArray(parsedQuestions)) {
+          return res.status(400).json({ message: "Questions should be an array" });
+        }
+
+        for (let index = 0; index < parsedQuestions.length; index++) {
+          const q = parsedQuestions[index];
+          if (!q.question || typeof q.question !== 'string') {
+            return res.status(400).json({ message: `Question at index ${index} is invalid` });
+          }
+        }
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid questions format" });
+      }
+    }
+
+    const vendor = new Vendor({
+      name,
+      details,
+      website,
+      questions: parsedQuestions,
+      vendorlogo, // Store only the relative path
+    });
+
     await vendor.save();
-    res.status(201).json({ message: 'Vendor added successfully', vendor });
+    res.status(201).json({ message: "Vendor added successfully", vendor });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+
+
+
 
 const deleteVendor = async (req, res) => {
   const { vendorId } = req.params;
@@ -267,57 +313,7 @@ const fetchCredits = async (req, res) => {
 
 
 
-// Register User (with file upload)
-// const registerUser = async (req, res) => {
-//   upload.fields([
-//     { name: 'tradeLicense', maxCount: 1 },
-//     { name: 'auditedFinancials', maxCount: 1 },
-//   ])(req, res, async err => {
-//     if (err) return res.status(400).send(err.message);
 
-//     const { name, organizationName, email, password, creditRequired } = req.body;
-//     const tradeLicensePath = req.files.tradeLicense
-//       ? `/uploads/${req.files.tradeLicense[0].filename}`
-//       : null;
-//     const auditedFinancialsPath = req.files.auditedFinancials
-//       ? `/uploads/${req.files.auditedFinancials[0].filename}`
-//       : null;
-
-//     try {
-//       const existingUser = await User.findOne({ email });
-//       if (existingUser) return res.status(400).send('Email already registered.');
-
-//       const hashedPassword = await bcrypt.hash(password, 10);
-
-//       const newUser = new User({
-//         name,
-//         organizationName,
-//         email,
-//         password: hashedPassword,
-//         tradeLicense: tradeLicensePath,
-//         auditedFinancials: creditRequired === 'true' ? auditedFinancialsPath : null,
-//         registrationStatus: 'pending',
-//       });
-
-//       await newUser.save();
-
-//       // Create credit record if audited financials are provided and credit is required
-//       if (creditRequired === 'true' && auditedFinancialsPath) {
-//         const newCredit = new Credit({
-//           userId: newUser._id,
-//           status: 'pending',
-//           approvedDays: 0, // Default to 0 until approval
-//         });
-//         await newCredit.save();
-//       }
-
-//       res.status(201).send('User registered successfully.');
-//     } catch (error) {
-//       console.error('Error registering user:', error);
-//       res.status(500).send('An error occurred while registering the user.');
-//     }
-//   });
-// };
 
 
 module.exports = {

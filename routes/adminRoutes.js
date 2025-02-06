@@ -16,6 +16,7 @@ const {
 } = require("../controllers/adminController");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
+const upload = require('../config/multer');
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.get("/orders", adminMiddleware, getAllOrdersForAdmin);
 
 // Vendor management routes
 router.get("/vendors", adminMiddleware, getVendors);
-router.post("/vendors", addVendor);
+router.post("/vendors", adminMiddleware,upload.single('vendorlogo'),  addVendor);
 router.delete("/vendors/:vendorId", adminMiddleware, deleteVendor);
 router.put("/credit/:id", adminMiddleware, postCreditDetails); // Update credit details
 router.get("/credit", adminMiddleware, getCreditDetails); // Get credit details

@@ -1,5 +1,5 @@
 const express = require('express');
-const { registerUser, loginUser, getMyCredit, getOrdersPlaced, generateInvoice,getVendorsForUser,createOrder,getOrders } = require('../controllers/authController'); // Ensure this import is correct
+const { registerUser, loginUser, getMyCredit, getOrdersPlaced, generateInvoice,getVendorsForUser,createOrder,getOrders ,getVendorById,submitUserResponses,getUserResponses} = require('../controllers/authController'); // Ensure this import is correct
 const router = express.Router();
 const authenticate = require('../middleware/authMiddleware'); 
 
@@ -13,6 +13,14 @@ router.get('/vendors', authenticate, getVendorsForUser);
 
 router.post("/createorder", authenticate, createOrder); // POST an order
 router.get("/getorder", authenticate, getOrders); 
+router.get("/vendor/:vendorId", authenticate, getVendorById);
+router.post('/submit-responses',authenticate, submitUserResponses);
+// In your backend routes file
+router.get("/vendor/:vendorId/user/:userId/responses", authenticate,getUserResponses);
+
+
+
+
 
 
 

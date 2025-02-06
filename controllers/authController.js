@@ -4,6 +4,8 @@ const User = require('../models/User');
 const Order = require('../models/Order');  // Import the Order model
 const Vendor = require('../models/Vendor');
 const Credit = require("../models/Credit");
+const mongoose = require('mongoose'); 
+const { ObjectId } = require("mongodb");
 
 
 const sendEmail = require('../config/email');
@@ -79,6 +81,7 @@ const registerUser = async (req, res) => {
     }
   });
 };
+
 
 
 
@@ -175,6 +178,206 @@ const getVendorsForUser = async (req, res) => {
     res.status(500).json({ message: 'An error occurred while fetching vendors.' });
   }
 };
+
+const getVendorById = async (req, res) => {
+  try {
+    const { vendorId } = req.params; // Extract vendor ID from the request URL
+
+    if (!vendorId) {
+      return res.status(400).json({ message: "Vendor ID is required." });
+    }
+
+    // Find vendor by ID in the database
+    const vendor = await Vendor.findById(vendorId);
+
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found." });
+    }
+
+    res.status(200).json(vendor);
+  } catch (error) {
+    console.error("Error fetching vendor details:", error);
+    res.status(500).json({ message: "An error occurred while fetching vendor details." });
+  }
+};
+
+
+const submitUserResponses = async (req, res) => {
+  try {
+    const { vendorId, userId, responses } = req.body;
+
+    // Validate input
+    if (!vendorId || !userId || !Array.isArray(responses)) {
+      return res.status(400).json({ message: "Invalid request, missing vendorId, userId, or responses array." });
+    }
+
+    // Find the vendor by vendorId
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    // Find the user by userId
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if user already has responses for this vendor
+    let userResponse = vendor.userResponses.find(
+      (response) => response.userId.toString() === userId.toString()
+    );
+
+    if (!userResponse) {
+      userResponse = {
+        userId,
+        responses: [],
+      };
+      vendor.userResponses.push(userResponse);
+    }
+
+    // Store formatted responses
+    let formattedResponses = [];
+    for (const response of responses) {
+      const { questionId, answer } = response;
+
+      // Find the actual question object
+      const questionObj = vendor.questions.find(
+        (q) => q._id.toString() === questionId.toString()
+      );
+
+      if (!questionObj) {
+        return res.status(400).json({ message: `Question not found in vendor's questions` });
+      }
+
+      // Correctly retrieve the question text
+      formattedResponses.push({
+        question: questionObj.question, // FIX: Correct field name
+        answer,
+      });
+
+      // Find if the response to the specific question already exists for this user
+      const existingResponse = userResponse.responses.find(
+        (r) => r.questionId.toString() === questionId.toString()
+      );
+
+      if (existingResponse) {
+        existingResponse.answer = answer;
+      } else {
+        userResponse.responses.push({ questionId, answer });
+      }
+    }
+
+    // Save the updated vendor document
+    await vendor.save();
+
+    // Prepare email content with vendor details, website, and responses
+    const emailContent = `
+      A new response has been submitted:
+
+      Vendor: ${vendor.name}
+      Details: ${vendor.details}
+      Website: ${vendor.website}
+      
+      Submitted by: ${user.name}
+
+      Responses:
+      ${formattedResponses.map((r) => `Question: ${r.question}, Answer: ${r.answer}`).join("\n")}
+
+      Thank you!
+    `;
+
+    // Send an email to the admin
+    sendEmail(
+      process.env.MAIL_USER, // Admin email address from environment variables
+      'New User Response Submitted',
+      emailContent
+    );
+
+    res.status(200).json({ message: "Responses submitted successfully, and email sent to admin." });
+  } catch (error) {
+    console.error("Error submitting responses:", error);
+    res.status(500).json({ message: "Server error while submitting responses" });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+const getUserResponses = async (req, res) => {
+  try {
+    const { vendorId, userId } = req.params;
+
+    console.log("Received vendorId:", vendorId);
+    console.log("Received userId:", userId);
+
+    if (!vendorId || !userId) {
+      return res.status(400).json({ message: "Invalid request, missing vendorId or userId." });
+    }
+
+    if (!mongoose.isValidObjectId(vendorId)) {
+      return res.status(400).json({ message: "Invalid vendorId format" });
+    }
+
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Invalid userId format" });
+    }
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    const userResponse = vendor.userResponses.find(
+      (response) => response.userId.toString() === userId.toString()
+    );
+
+    if (!userResponse || userResponse.responses.length === 0) {
+      return res.status(404).json({ message: "No responses found for this user" });
+    }
+
+    const formattedResponses = userResponse.responses.map((response) => {
+      const questionObj = vendor.questions.find(
+        (q) => q._id.toString() === response.questionId.toString()
+      );
+      return {
+        question: questionObj ? questionObj.question : "Unknown Question",
+        answer: response.answer,
+      };
+    });
+
+    res.status(200).json({
+      vendor: {
+        name: vendor.name,
+        details: vendor.details,
+        website: vendor.website,
+      },
+      userResponses: formattedResponses,
+    });
+  } catch (error) {
+    console.error("Error fetching user responses:", error);
+    res.status(500).json({ message: "Server error while fetching user responses" });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Get Orders Placed
 const getOrdersPlaced = async (req, res) => {
@@ -322,5 +525,5 @@ const generateInvoice = async (req, res) => {
 
 
 // Export the functions
-module.exports = { registerUser, loginUser ,getMyCredit,getOrdersPlaced,generateInvoice,getVendorsForUser,createOrder,getOrders};
+module.exports = { registerUser, loginUser ,getMyCredit,getOrdersPlaced,generateInvoice,getVendorsForUser,createOrder,getOrders,getVendorById,submitUserResponses,getUserResponses};
 
